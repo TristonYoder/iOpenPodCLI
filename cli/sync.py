@@ -45,14 +45,31 @@ def _progress_cb(progress: Any) -> None:
 # Music sync
 # ---------------------------------------------------------------------------
 
-def _build_pc_folders(config: SyncConfig) -> tuple[Any, ...]:
-    """Build pc_folders entries from the config's music_path.
+def _build_pc_folders(config: SyncConfig, manifest: dict | None = None) -> tuple[Any, ...]:
+    """Build pc_folders entries for the SyncEngine PLAN phase.
 
-    When specific playlists are configured, we request both "music" and
-    "playlists" media types so the engine discovers the M3U files.
-    Without playlists, we scan for music only.
+    When a manifest is available (from `iopod prepare`), scope the scan to
+    only the directories that contain playlist-referenced tracks. Combined
+    with the pre-populated fingerprint cache this makes PLAN very fast.
+
+    Without a manifest, fall back to scanning the full music_path (slow on
+    first run but correct).
     """
     from infrastructure.media_folders import MediaFolderEntry
+
+    if manifest:
+        # Collect the unique parent directories of all playlist tracks.
+        # recurse=False so the scanner only reads files in that exact dir.
+        dirs: dict[str, None] = {}
+        for fp, entry in manifest.get("music", {}).items():
+            src = entry.get("source_path")
+            if src:
+                dirs[str(Path(src).parent)] = None
+        if dirs:
+            return tuple(
+                MediaFolderEntry(directory=d, recurse=False, media_types=("music",))
+                for d in dirs
+            )
 
     music_path = str(Path(config.music_path).expanduser())
     media_types: tuple[str, ...]
@@ -60,7 +77,6 @@ def _build_pc_folders(config: SyncConfig) -> tuple[Any, ...]:
         media_types = ("music", "playlists")
     else:
         media_types = ("music",)
-
     return (MediaFolderEntry(directory=music_path, recurse=True, media_types=media_types),)
 
 
@@ -95,6 +111,7 @@ def run_music_sync(
     device_capabilities: Any,
     config: SyncConfig,
     dry_run: bool = False,
+    manifest: dict | None = None,
 ) -> bool:
     from SyncEngine.core.engine import SyncEngine
     from SyncEngine.core.models import (
@@ -104,7 +121,9 @@ def run_music_sync(
     )
     from SyncEngine.mapping import MappingManager
 
-    pc_folders = _build_pc_folders(config)
+    if manifest:
+        print("[Music] Using pre-staged manifest (fast path)")
+    pc_folders = _build_pc_folders(config, manifest)
     selected_playlist_paths = _resolve_playlist_paths(config)
 
     print("\n[Music] Planning sync...")
@@ -195,6 +214,7 @@ def run_podcast_sync(
     device_capabilities: Any,
     config: SyncConfig,
     dry_run: bool = False,
+    manifest: dict | None = None,
 ) -> bool:
     if not config.podcasts:
         return True
@@ -226,17 +246,34 @@ def run_podcast_sync(
         else:
             existing.episode_slots = pod_cfg.keep_episodes
 
-    # Refresh each feed and match against iPod
+    # Refresh feeds — use staged episodes from manifest when available to skip
+    # live downloads; fall back to fetching from network.
+    staged_podcasts = (manifest or {}).get("podcasts", {})
     print(f"\n[Podcasts] Refreshing {len(store._feeds)} feed(s)...")
     refreshed: list[PodcastFeed] = []
     for feed in store._feeds:
         print(f"  {feed.feed_url}")
-        try:
-            updated = fetch_feed(feed.feed_url, existing=feed)
+        staged = staged_podcasts.get(feed.feed_url)
+        if staged:
+            # Inject pre-downloaded episode paths so the engine copies from
+            # the staging area instead of downloading during sync.
+            try:
+                updated = fetch_feed(feed.feed_url, existing=feed)
+            except Exception as exc:
+                logger.warning("Feed refresh failed (using staged): %s", exc)
+                updated = feed
+            for ep in updated.episodes:
+                for s in staged:
+                    if s.get("guid") == ep.guid and s.get("staged_path"):
+                        ep.downloaded_path = s["staged_path"]
             refreshed.append(updated)
-        except Exception as exc:
-            logger.warning("Feed refresh failed for %s: %s", feed.feed_url, exc)
-            refreshed.append(feed)
+        else:
+            try:
+                updated = fetch_feed(feed.feed_url, existing=feed)
+                refreshed.append(updated)
+            except Exception as exc:
+                logger.warning("Feed refresh failed for %s: %s", feed.feed_url, exc)
+                refreshed.append(feed)
 
     store.update_feeds(refreshed)
 
@@ -294,9 +331,19 @@ def run_sync(
     dry_run: bool = False,
     skip_music: bool = False,
     skip_podcasts: bool = False,
+    cache_dir: "Path | None" = None,
 ) -> int:
     """Run a full sync cycle. Returns exit code (0 = success)."""
     from iTunesDB_Parser.ipod_library import load_ipod_library
+    from cli.prepare import load_manifest, DEFAULT_CACHE_DIR
+
+    manifest = load_manifest(cache_dir or DEFAULT_CACHE_DIR)
+    if manifest:
+        music_count = len(manifest.get("music", {}))
+        pod_count = sum(len(v) for v in manifest.get("podcasts", {}).values())
+        print(f"Manifest loaded: {music_count} tracks, {pod_count} podcast episode(s) staged")
+    else:
+        print("No manifest found — running full library scan (run `iopod prepare` first for faster syncs)")
 
     # 1. Find iPod
     print("Scanning for iPod...")
@@ -338,6 +385,7 @@ def run_sync(
             device_capabilities=caps,
             config=config,
             dry_run=dry_run,
+            manifest=manifest,
         ) and ok
 
     # 4. Podcast sync
@@ -350,6 +398,7 @@ def run_sync(
             device_capabilities=caps,
             config=config,
             dry_run=dry_run,
+            manifest=manifest,
         ) and ok
 
     return 0 if ok else 1
