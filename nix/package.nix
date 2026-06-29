@@ -18,7 +18,7 @@
 # GUI-only; pass null to build the headless CLI without Qt
 , wrapQtAppsHook ? null
 , qt6 ? null
-, headless ? false  # when true: skip Qt, install only iopenpod-sync
+, headless ? false  # when true: skip Qt, install only iopod CLI
 , src
 }:
 
@@ -27,7 +27,7 @@ let
 in
 
 buildPythonApplication {
-  pname = if headless then "iopenpod-sync" else "iopenpod";
+  pname = if headless then "iopod" else "iopenpod";
   version = (builtins.fromTOML (builtins.readFile ../pyproject.toml)).project.version;
   pyproject = true;
 
@@ -89,7 +89,7 @@ buildPythonApplication {
       else "Open-source iPod sync tool — manage your iPod without iTunes";
     homepage = "https://github.com/TristonYoder/iOpenPodCLI";
     license = licenses.mit;
-    mainProgram = if headless then "iopenpod-sync" else "iopenpod";
+    mainProgram = if headless then "iopod" else "iopenpod";
     platforms = platforms.linux ++ platforms.darwin;
     maintainers = [ ];
   };

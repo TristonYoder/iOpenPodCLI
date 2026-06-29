@@ -85,7 +85,7 @@ rating_strategy: ipod_wins
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="iopenpod-sync",
+        prog="iopod",
         description="Headless iPod sync — music playlists + podcasts + ratings",
     )
     parser.add_argument("--config", metavar="PATH", help="Config file path")

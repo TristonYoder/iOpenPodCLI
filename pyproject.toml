@@ -47,7 +47,6 @@ dependencies = [
 
 [project.scripts]
 iopenpod = "main:main"
-iopenpod-sync = "cli.main:main"
 iopod = "cli.main:main"
 
 [dependency-groups]

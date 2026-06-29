@@ -17,7 +17,7 @@
           wasmtime-py = python.pkgs.callPackage ./nix/wasmtime-py.nix { };
 
           # Headless CLI — no Qt; works on servers and desktops alike
-          iopenpod-sync = python.pkgs.callPackage ./nix/package.nix {
+          iopod = python.pkgs.callPackage ./nix/package.nix {
             wasmtime = wasmtime-py;
             src = self;
             headless = true;
@@ -34,13 +34,13 @@
         in
         {
           packages = {
-            inherit iopenpod-sync iopenpod wasmtime-py;
+            inherit iopod iopenpod wasmtime-py;
             # Default: headless CLI, suitable for both server and desktop
-            default = iopenpod-sync;
+            default = iopod;
           };
 
           apps = {
-            default = flake-utils.lib.mkApp { drv = iopenpod-sync; name = "iopenpod-sync"; };
+            default = flake-utils.lib.mkApp { drv = iopod; name = "iopod"; };
             iopenpod = flake-utils.lib.mkApp { drv = iopenpod; name = "iopenpod"; };
           };
 
@@ -73,13 +73,13 @@
       # Overlay — consume from another flake (e.g. nix-config):
       #   inputs.iopenpodcli.url = "github:TristonYoder/iOpenPodCLI";
       #   nixpkgs.overlays = [ inputs.iopenpodcli.overlays.default ];
-      #   environment.systemPackages = [ pkgs.iopenpod-sync ];
+      #   environment.systemPackages = [ pkgs.iopod ];
       overlays.default = final: prev:
         let
           wasmtime-py = prev.python312Packages.callPackage ./nix/wasmtime-py.nix { };
         in
         {
-          iopenpod-sync = prev.python312Packages.callPackage ./nix/package.nix {
+          iopod = prev.python312Packages.callPackage ./nix/package.nix {
             wasmtime = wasmtime-py;
             src = self;
             headless = true;
