@@ -37,10 +37,14 @@ buildPythonApplication {
   # the time of packaging. These are minor semver bumps with no API changes.
   postPatch = ''
     substituteInPlace pyproject.toml \
-      --replace-fail 'pyqt6>=6.9.1,<7.0.0'   'pyqt6>=6.9.0,<7.0.0' \
       --replace-fail 'numpy>=2.3.0,<3.0.0'    'numpy>=2.2.0,<3.0.0' \
       --replace-fail 'pillow>=11.2.1,<12.0.0' 'pillow>=11.0.0' \
       --replace-fail 'tqdm>=4.67.3'            'tqdm>=4.67.1'
+  '' + lib.optionalString withGui ''
+    substituteInPlace pyproject.toml \
+      --replace-fail 'pyqt6>=6.9.1,<7.0.0' 'pyqt6>=6.9.0,<7.0.0'
+  '' + lib.optionalString (!withGui) ''
+    sed -i '/"pyqt6>=/d' pyproject.toml
   '';
 
   nativeBuildInputs = lib.optionals withGui [
