@@ -55,12 +55,12 @@ def load_config(path: Path | str | None = None) -> SyncConfig:
             url=p["url"] if isinstance(p, dict) else str(p),
             keep_episodes=int(p.get("keep_episodes", 5)) if isinstance(p, dict) else 5,
         )
-        for p in raw.get("podcasts", [])
+        for p in (raw.get("podcasts") or [])
     ]
 
     return SyncConfig(
         music_path=str(raw.get("music_path", "~/Music")),
-        playlists=[str(p) for p in raw.get("playlists", [])],
+        playlists=[str(p) for p in (raw.get("playlists") or [])],
         podcasts=podcasts,
         pull_ratings=bool(raw.get("pull_ratings", True)),
         pull_playcounts=bool(raw.get("pull_playcounts", True)),
