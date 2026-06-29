@@ -25,7 +25,7 @@ def find_ipod(mount_hint: str | None = None) -> tuple[DeviceInfo, str] | None:
             return None
         devices = scan_for_ipods()
         for d in devices:
-            if str(d.mount_path) == str(mount_hint):
+            if str(d.path) == str(mount_hint):
                 return d, db_path
         # Fallback: return path without full DeviceInfo (checksum detection still works)
         logger.warning("Device info not found for %s — using filesystem-only mode", mount_hint)
@@ -39,7 +39,7 @@ def find_ipod(mount_hint: str | None = None) -> tuple[DeviceInfo, str] | None:
     if len(devices) > 1:
         logger.info("Multiple iPods found — using first: %s", device.display_name)
 
-    db_path = _itunesdb_path(str(device.mount_path))
+    db_path = _itunesdb_path(str(device.path))
     return device, db_path
 
 
