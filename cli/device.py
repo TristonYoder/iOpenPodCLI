@@ -18,18 +18,22 @@ def find_ipod(mount_hint: str | None = None) -> tuple[DeviceInfo, str] | None:
     Returns None when no iPod is found.
     """
     if mount_hint:
-        # Synthesise a minimal scan from the user-supplied path
         db_path = _itunesdb_path(mount_hint)
         if not Path(db_path).exists():
             logger.error("No iTunesDB found at %s", db_path)
             return None
+        # Try to get full DeviceInfo from the scanner (enriches checksum type etc.)
         devices = scan_for_ipods()
         for d in devices:
             if str(d.path) == str(mount_hint):
                 return d, db_path
-        # Fallback: return path without full DeviceInfo (checksum detection still works)
-        logger.warning("Device info not found for %s — using filesystem-only mode", mount_hint)
-        return None
+        # Scanner didn't find it (path not in its search dirs) — synthesise minimal info
+        from ipod_device.info import DeviceInfo
+        info = DeviceInfo()
+        info.path = mount_hint
+        info.mount_name = Path(mount_hint).name
+        logger.info("Using filesystem-only mode for %s", mount_hint)
+        return info, db_path
 
     devices = scan_for_ipods()
     if not devices:
