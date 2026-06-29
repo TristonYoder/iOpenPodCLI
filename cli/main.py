@@ -88,39 +88,84 @@ def main() -> None:
         prog="iopod",
         description="Headless iPod sync — music playlists + podcasts + ratings",
     )
+    sub = parser.add_subparsers(dest="command")
+
+    # ── prepare ─────────────────────────────────────────────────────────────
+    prep = sub.add_parser(
+        "prepare",
+        help="Pre-fingerprint playlist tracks and download podcasts (run on a timer)",
+    )
+    prep.add_argument("--config", metavar="PATH", help="Config file path")
+    prep.add_argument("--cache-dir", metavar="PATH", default="/var/cache/iopod",
+                      help="Staging cache directory (default: /var/cache/iopod)")
+    prep.add_argument("--dry-run", action="store_true", help="Show what would be done")
+    prep.add_argument("-v", "--verbose", action="store_true")
+
+    # ── sync ────────────────────────────────────────────────────────────────
+    syn = sub.add_parser(
+        "sync",
+        help="Sync the connected iPod using pre-staged manifest (fast path)",
+    )
+    syn.add_argument("--config", metavar="PATH", help="Config file path")
+    syn.add_argument("--device", metavar="PATH", help="iPod mount path (auto-detect if omitted)")
+    syn.add_argument("--cache-dir", metavar="PATH", default="/var/cache/iopod",
+                     help="Staging cache directory (default: /var/cache/iopod)")
+    syn.add_argument("--dry-run", action="store_true", help="Plan but don't write")
+    syn.add_argument("--no-music", action="store_true", help="Skip music sync")
+    syn.add_argument("--no-podcasts", action="store_true", help="Skip podcast sync")
+    syn.add_argument("-v", "--verbose", action="store_true")
+
+    # ── legacy / convenience flags (no subcommand = sync) ───────────────────
     parser.add_argument("--config", metavar="PATH", help="Config file path")
     parser.add_argument("--device", metavar="PATH", help="iPod mount path (auto-detect if omitted)")
-    parser.add_argument("--dry-run", action="store_true", help="Plan but don't write")
-    parser.add_argument("--no-music", action="store_true", help="Skip music sync")
-    parser.add_argument("--no-podcasts", action="store_true", help="Skip podcast sync")
-    parser.add_argument("--list-devices", action="store_true", help="List connected iPods and exit")
-    parser.add_argument("--init-config", metavar="PATH", nargs="?", const="~/.config/iopenpodcli/config.yaml",
+    parser.add_argument("--cache-dir", metavar="PATH", default="/var/cache/iopod")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--no-music", action="store_true")
+    parser.add_argument("--no-podcasts", action="store_true")
+    parser.add_argument("--list-devices", action="store_true",
+                        help="List connected iPods and exit")
+    parser.add_argument("--init-config", metavar="PATH", nargs="?",
+                        const="~/.config/iopenpodcli/config.yaml",
                         help="Write example config and exit")
     parser.add_argument("-v", "--verbose", action="store_true")
 
     args = parser.parse_args()
     _setup_logging(args.verbose)
 
-    if args.list_devices:
+    if getattr(args, "list_devices", False):
         _list_devices()
         sys.exit(0)
 
-    if args.init_config:
+    if getattr(args, "init_config", None):
         _init_config(args.init_config)
         sys.exit(0)
 
+    from pathlib import Path
     from cli.config import load_config
+
+    cmd = args.command or "sync"
+
+    if cmd == "prepare":
+        from cli.prepare import run_prepare
+        config = load_config(args.config)
+        ok = run_prepare(
+            config=config,
+            cache_dir=Path(args.cache_dir),
+            dry_run=args.dry_run,
+        )
+        sys.exit(0 if ok else 1)
+
+    # sync (default)
     from cli.sync import run_sync
-
     config = load_config(args.config)
-
     sys.exit(
         run_sync(
             config=config,
-            mount_hint=args.device,
+            mount_hint=getattr(args, "device", None),
             dry_run=args.dry_run,
-            skip_music=args.no_music,
-            skip_podcasts=args.no_podcasts,
+            skip_music=getattr(args, "no_music", False),
+            skip_podcasts=getattr(args, "no_podcasts", False),
+            cache_dir=Path(args.cache_dir),
         )
     )
 
